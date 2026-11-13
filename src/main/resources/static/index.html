@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Signature Verification System</title>
+<style>
+  :root { --bg:#f5f7fb; --card:#fff; --text:#1c2333; --muted:#667085; --line:#dfe3ec; --brand:#2b59c3; --ok:#12805c; --bad:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#10131a; --card:#181d28; --text:#e8ecf5; --muted:#98a2b3; --line:#2a3142; --brand:#6d97ff; --ok:#3ecf9a; --bad:#ff7b6b; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:24px 20px 8px; max-width:900px; margin:auto; }
+  h1 { margin:0; font-size:1.5rem; } p.sub { color:var(--muted); margin:4px 0 0; }
+  nav { max-width:900px; margin:16px auto 0; padding:0 20px; display:flex; gap:6px; flex-wrap:wrap; }
+  nav button { border:1px solid var(--line); background:var(--card); color:var(--text); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:.95rem; }
+  nav button.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+  main { max-width:900px; margin:12px auto 40px; padding:0 20px; }
+  section { display:none; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  section.active { display:block; }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:12px 0 4px; }
+  input, select, textarea { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
+  textarea { min-height:90px; font-family:ui-monospace,Menlo,monospace; font-size:.8rem; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media(max-width:600px){ .row{grid-template-columns:1fr;} }
+  button.primary { margin-top:16px; background:var(--brand); color:#fff; border:0; padding:10px 18px; border-radius:8px; cursor:pointer; font-size:1rem; }
+  .result { margin-top:16px; padding:12px; border-radius:8px; border:1px solid var(--line); word-break:break-all; font-size:.88rem; white-space:pre-wrap; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; display:block; overflow-x:auto; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .hint { font-size:.8rem; color:var(--muted); margin-top:6px; }
+  .small { padding:4px 10px; font-size:.8rem; margin:0 4px 0 0; background:transparent; color:var(--brand); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔏 Digital Signature Verification System</h1>
+  <p class="sub">Generate keys, sign documents and verify authenticity (RSA / ECDSA, SHA-256).</p>
+</header>
+<nav id="tabs">
+  <button data-tab="keys" class="active">1. Keys</button>
+  <button data-tab="sign">2. Sign</button>
+  <button data-tab="verify">3. Verify</button>
+  <button data-tab="history">History</button>
+</nav>
+<main>
+  <section id="keys" class="active">
+    <div class="row">
+      <div><label>Alias</label><input id="k-alias" placeholder="alice-key"></div>
+      <div><label>Password (protects the private key, min 8)</label><input id="k-pass" type="password"></div>
+    </div>
+    <div class="row">
+      <div><label>Algorithm</label>
+        <select id="k-alg"><option>RSA</option><option>EC</option></select></div>
+      <div><label>Key size</label><select id="k-size"></select></div>
+    </div>
+    <button class="primary" id="k-btn">Generate key pair</button>
+    <div id="k-out" class="result" style="display:none"></div>
+    <h3>Stored keys</h3>
+    <table><thead><tr><th>Alias</th><th>Type</th><th>Size</th><th>Created</th><th></th></tr></thead><tbody id="k-list"></tbody></table>
+  </section>
+
+  <section id="sign">
+    <label>Key alias</label><select id="s-alias"></select>
+    <label>Key password</label><input id="s-pass" type="password">
+    <label>Document</label><input id="s-file" type="file">
+    <button class="primary" id="s-btn">Sign document</button>
+    <div id="s-out" class="result" style="display:none"></div>
+    <p class="hint">Keep the Base64 signature: you need it, together with the original file, to verify.</p>
+  </section>
+
+  <section id="verify">
+    <label>Document (original file)</label><input id="v-file" type="file">
+    <label>Signature (Base64)</label><textarea id="v-sig"></textarea>
+    <label>Verify with</label>
+    <select id="v-mode"><option value="alias">Stored key alias</option><option value="pem">Pasted public key (PEM)</option></select>
+    <div id="v-alias-wrap"><label>Key alias</label><select id="v-alias"></select></div>
+    <div id="v-pem-wrap" style="display:none"><label>Public key PEM</label><textarea id="v-pem"></textarea></div>
+    <button class="primary" id="v-btn">Verify signature</button>
+    <div id="v-out" class="result" style="display:none"></div>
+  </section>
+
+  <section id="history">
+    <h3>Signatures created</h3>
+    <table><thead><tr><th>#</th><th>Document</th><th>Key</th><th>SHA-256</th><th>Time</th></tr></thead><tbody id="h-sigs"></tbody></table>
+    <h3>Verification log</h3>
+    <table><thead><tr><th>#</th><th>Document</th><th>Key</th><th>Result</th><th>Time</th></tr></thead><tbody id="h-ver"></tbody></table>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const show = (el, html, cls) => { el.style.display='block'; el.innerHTML = html; el.className = 'result ' + (cls||''); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = t => new Date(t).toLocaleString();
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || r.statusText);
+  return data;
+}
+
+// ---- tabs
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#tabs button, section').forEach(e => e.classList.remove('active'));
+  b.classList.add('active'); $(b.dataset.tab).classList.add('active');
+  if (b.dataset.tab === 'history') loadHistory(); else loadKeys();
+});
+
+// ---- keys
+function fillSizes() {
+  const sizes = $('k-alg').value === 'RSA' ? [2048, 3072, 4096] : [256, 384];
+  $('k-size').innerHTML = sizes.map(s => `<option>${s}</option>`).join('');
+}
+$('k-alg').onchange = fillSizes; fillSizes();
+
+async function loadKeys() {
+  const keys = await api('/api/keys');
+  $('k-list').innerHTML = keys.map(k => `<tr><td>${esc(k.alias)}</td><td>${k.algorithm}</td><td>${k.keySize}</td>
+    <td>${fmt(k.createdAt)}</td>
+    <td><button class="small" onclick="location.href='/api/keys/${encodeURIComponent(k.alias)}/public'">Public key</button>
+        <button class="small" onclick="delKey('${esc(k.alias)}')">Delete</button></td></tr>`).join('')
+    || '<tr><td colspan="5">No keys yet</td></tr>';
+  const opts = keys.map(k => `<option>${esc(k.alias)}</option>`).join('');
+  $('s-alias').innerHTML = opts; $('v-alias').innerHTML = opts;
+}
+async function delKey(alias) {
+  if (!confirm('Delete key ' + alias + '? Existing signatures can no longer be verified by alias.')) return;
+  try { await api('/api/keys/' + encodeURIComponent(alias), { method: 'DELETE' }); loadKeys(); }
+  catch (e) { alert(e.message); }
+}
+$('k-btn').onclick = async () => {
+  try {
+    const k = await api('/api/keys', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ alias:$('k-alias').value, password:$('k-pass').value,
+        algorithm:$('k-alg').value, keySize:+$('k-size').value }) });
+    show($('k-out'), `<span class="ok">Key created: ${esc(k.alias)}</span>\n\n${esc(k.publicKeyPem)}`);
+    $('k-pass').value = ''; loadKeys();
+  } catch (e) { show($('k-out'), esc(e.message), 'bad'); }
+};
+
+// ---- sign
+$('s-btn').onclick = async () => {
+  try {
+    const f = $('s-file').files[0]; if (!f) throw new Error('Choose a file');
+    const fd = new FormData(); fd.append('file', f); fd.append('alias', $('s-alias').value); fd.append('password', $('s-pass').value);
+    const r = await api('/api/sign', { method:'POST', body: fd });
+    show($('s-out'), `<span class="ok">Signed ✔</span>\nAlgorithm: ${esc(r.algorithm)}\nSHA-256: ${esc(r.documentHash)}\n\nSignature (Base64):\n${esc(r.signature)}`);
+    $('v-sig').value = r.signature; $('s-pass').value = '';
+  } catch (e) { show($('s-out'), esc(e.message), 'bad'); }
+};
+
+// ---- verify
+$('v-mode').onchange = () => {
+  const pem = $('v-mode').value === 'pem';
+  $('v-pem-wrap').style.display = pem ? 'block' : 'none';
+  $('v-alias-wrap').style.display = pem ? 'none' : 'block';
+};
+$('v-btn').onclick = async () => {
+  try {
+    const f = $('v-file').files[0]; if (!f) throw new Error('Choose the original file');
+    const fd = new FormData(); fd.append('file', f); fd.append('signature', $('v-sig').value);
+    if ($('v-mode').value === 'pem') fd.append('publicKeyPem', $('v-pem').value); else fd.append('alias', $('v-alias').value);
+    const r = await api('/api/verify', { method:'POST', body: fd });
+    show($('v-out'), `<span class="${r.valid ? 'ok' : 'bad'}">${r.valid ? '✔ VALID' : '✘ INVALID'}</span>\n${esc(r.message)}\n\nAlgorithm: ${esc(r.algorithm)}\nSHA-256: ${esc(r.documentHash)}`);
+  } catch (e) { show($('v-out'), esc(e.message), 'bad'); }
+};
+
+// ---- history
+async function loadHistory() {
+  const [sigs, vers] = await Promise.all([api('/api/signatures'), api('/api/verifications')]);
+  $('h-sigs').innerHTML = sigs.map(s => `<tr><td>${s.id}</td><td>${esc(s.documentName)}</td><td>${esc(s.keyAlias)}</td>
+    <td>${esc(s.documentHash.slice(0,16))}…</td><td>${fmt(s.createdAt)}</td></tr>`).join('') || '<tr><td colspan="5">None</td></tr>';
+  $('h-ver').innerHTML = vers.map(v => `<tr><td>${v.id}</td><td>${esc(v.documentName)}</td><td>${esc(v.keyAlias)}</td>
+    <td class="${v.valid ? 'ok' : 'bad'}">${v.valid ? 'VALID' : 'INVALID'}</td><td>${fmt(v.verifiedAt)}</td></tr>`).join('') || '<tr><td colspan="5">None</td></tr>';
+}
+loadKeys();
+</script>
+</body>
+</html>
